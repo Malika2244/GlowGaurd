@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GlowGuard</title>
+<style>
+:root{--bg:#FDF1F8;--card:#fff;--ink:#2A1B54;--soft:#6B5E8C;--main:#6D4FC2;--pink:#F4B6D8;--line:#E3D3F2;--bad:#B3261E;--badbg:#FDE8E6;--ok:#1E7A46;--okbg:#E4F5EA}
+@media (prefers-color-scheme:dark){:root{--bg:#1B1430;--card:#251C42;--ink:#F3EBFF;--soft:#B8A9DB;--main:#A68BFF;--pink:#C9689F;--line:#3A2E63;--bad:#FFB4AB;--badbg:#4A2224;--ok:#8FE0AE;--okbg:#1F3A2B}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Segoe UI",Roboto,Arial,sans-serif;padding:24px 16px}
+main{max-width:980px;margin:0 auto}
+h1{font-size:2.4rem;margin:0;letter-spacing:-.02em;color:var(--main)}
+.sub{color:var(--soft);margin:4px 0 28px}
+.hub{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
+.mod{background:var(--card);border:1.5px solid var(--line);border-radius:14px;padding:16px;text-align:left;color:inherit;font:inherit;cursor:pointer}
+.mod:hover,.mod:focus-visible{border-color:var(--main);outline:none}
+.mod b{display:block;font-size:1.05rem}
+.mod span{color:var(--soft);font-size:.92rem}
+.tag{display:inline-block;background:var(--pink);color:#2A1B54;border-radius:8px;padding:1px 8px;font-size:.8rem;margin-bottom:8px;font-weight:600}
+.live{border-color:var(--main)}
+#panel{margin-top:26px;background:var(--card);border:1.5px solid var(--line);border-radius:16px;padding:22px}
+#panel h2{margin:0 0 6px}
+textarea{width:100%;min-height:110px;border:1.5px solid var(--line);border-radius:10px;padding:10px;font:inherit;background:var(--bg);color:var(--ink)}
+button.go{margin-top:10px;background:var(--main);color:#fff;border:0;border-radius:10px;padding:10px 18px;font:inherit;font-weight:600;cursor:pointer}
+.res{margin-top:16px;display:grid;gap:8px}
+.hit,.safe{border-radius:10px;padding:10px 14px}
+.hit{background:var(--badbg);color:var(--bad)}
+.safe{background:var(--okbg);color:var(--ok)}
+.b{padding:9px 13px;border-radius:12px;max-width:85%;line-height:1.6}
+.me{background:var(--main);color:#fff;justify-self:end}
+.bot{background:var(--bg);border:1px solid var(--line)}
+#log{display:grid;gap:8px;margin:12px 0;max-height:340px;overflow:auto}
+.row{display:flex;gap:8px}
+.row input{flex:1;border:1.5px solid var(--line);border-radius:10px;padding:10px;font:inherit;background:var(--bg);color:var(--ink)}
+.row button{margin-top:0}
+.note{margin-top:22px;color:var(--soft);font-size:.88rem}
+</style>
+</head>
+<body>
+<main>
+<h1>GlowGuard</h1>
+<p class="sub">Check what is really inside your cosmetics. Pick a module to start.</p>
+<div class="hub" id="hub"></div>
+<section id="panel" aria-live="polite"></section>
+<p class="note">GlowGuard gives general safety information only. It is not a medical diagnosis. See a doctor or dermatologist for skin problems.</p>
+</main>
+<script>
+// ---- Module list (M4 is working; the rest are placeholders to build next) ----
+const MODULES=[
+ {id:"M1",name:"Product Scanner",desc:"Upload a label photo and read its ingredients."},
+ {id:"M2",name:"Skin Check",desc:"Describe your skin type and get general guidance."},
+ {id:"M3",name:"Review Detector",desc:"Spot fake or suspicious reviews."},
+ {id:"M4",name:"Steroid Checker",desc:"Paste ingredients and find restricted ones.",live:true},
+ {id:"M5",name:"Urdu & English Chatbot",desc:"Ask questions in Urdu or English.",live:true},
+ {id:"M6",name:"Safe Alternative",desc:"Find a safer product in the same category."},
+ {id:"M7",name:"Privacy Vault",desc:"Keep your scans private on your device."}
+];
+// ---- Restricted ingredients. Extend this list and cite your sources in the report. ----
+const RESTRICTED=[
+ {n:["clobetasol","کلوبیٹاسول"],why:"Strong steroid. Prescription only; misuse thins and damages skin.",u:"مضبوط اسٹیرائیڈ۔ صرف ڈاکٹر کے نسخے پر؛ غلط استعمال سے جلد پتلی اور خراب ہو جاتی ہے۔"},
+ {n:["betamethasone","بیٹامیتھاسون"],why:"Steroid. Prescription only; not allowed in cosmetic creams.",u:"اسٹیرائیڈ۔ صرف نسخے پر؛ کاسمیٹک کریم میں نہیں ہونا چاہیے۔"},
+ {n:["hydrocortisone","ہائیڈروکارٹیسون"],why:"Steroid. Should not be hidden in beauty creams.",u:"اسٹیرائیڈ۔ بیوٹی کریم میں چھپا ہوا نہیں ہونا چاہیے۔"},
+ {n:["triamcinolone","fluocinolone","dexamethasone"],why:"Steroid. Prescription medicine, not a cosmetic ingredient.",u:"اسٹیرائیڈ۔ نسخے کی دوا ہے، کاسمیٹک جز نہیں۔"},
+ {n:["hydroquinone","ہائیڈروکوینون"],why:"Skin lightener. Banned or limited in cosmetics in many countries.",u:"جلد گوری کرنے والا جز۔ کئی ممالک میں کاسمیٹکس میں ممنوع یا محدود ہے۔"},
+ {n:["mercury","mercurous chloride","calomel","مرکری","پارہ"],why:"Toxic metal. Banned in skin-lightening products.",u:"زہریلی دھات۔ جلد گوری کرنے والی مصنوعات میں ممنوع ہے۔"},
+ {n:["tretinoin"],why:"Prescription retinoid. Should not be in unregulated creams.",u:"نسخے کی ریٹینائیڈ۔ بغیر ضابطے والی کریموں میں نہیں ہونی چاہیے۔"}
+];
+const hub=document.getElementById("hub"),panel=document.getElementById("panel");
+MODULES.forEach(m=>{
+ const b=document.createElement("button");
+ b.className="mod"+(m.live?" live":"");
+ b.innerHTML=`<span class="tag">${m.id}</span><b>${m.name}</b><span>${m.desc}</span>`;
+ b.onclick=()=>open(m);
+ hub.appendChild(b);
+});
+function open(m){
+ if(m.id==="M4"){return steroid();}
+ if(m.id==="M5"){return chat();}
+ panel.innerHTML=`<h2>${m.id} · ${m.name}</h2><p>${m.desc}</p><p>This module is not built yet. It is next on the build plan.</p>`;
+ panel.scrollIntoView({behavior:"smooth"});
+}
+function steroid(){
+ panel.innerHTML=`<h2>M4 · Steroid Checker</h2>
+ <p>Paste the ingredient list from the label, separated by commas.</p>
+ <textarea id="ing" placeholder="Water, Glycerin, Hydroquinone, Clobetasol Propionate"></textarea>
+ <button class="go" id="run">Check ingredients</button>
+ <div class="res" id="out"></div>`;
+ document.getElementById("run").onclick=run;
+ panel.scrollIntoView({behavior:"smooth"});
+}
+function run(){
+ const text=document.getElementById("ing").value.toLowerCase(),out=document.getElementById("out");
+ if(!text.trim()){out.innerHTML=`<div class="hit">Paste at least one ingredient first.</div>`;return;}
+ const found=RESTRICTED.filter(r=>r.n.some(x=>text.includes(x)));
+ out.innerHTML=found.length
+  ? found.map(r=>`<div class="hit"><b>${r.n[0]}</b> found. ${r.why}</div>`).join("")
+  : `<div class="safe">No restricted ingredients from our list were found. This does not guarantee the product is safe.</div>`;
+}
+
+// ---- M5 Chatbot: works in English, Urdu script and Roman Urdu. No API key needed. ----
+const INTENTS=[
+ {k:["hello","hi ","salam","assalam","سلام","ہیلو"],
+  en:"Hello! I am the GlowGuard assistant. Ask me about steroid creams, harmful ingredients, or how to check a product.",
+  ur:"السلام علیکم! میں گلو گارڈ اسسٹنٹ ہوں۔ آپ مجھ سے اسٹیرائیڈ کریموں، نقصان دہ اجزاء یا پروڈکٹ چیک کرنے کے بارے میں پوچھ سکتے ہیں۔"},
+ {k:["steroid","fairness","whitening","gora","گورا","اسٹیرائیڈ","سٹیرائیڈ","فیئرنس"],
+  en:"Some fairness creams secretly contain steroids such as clobetasol. Used for long, they can thin the skin and cause acne, stretch marks and dark patches. Check the label in the Steroid Checker, and see a dermatologist if you already have skin problems.",
+  ur:"کچھ گورا کرنے والی کریموں میں چھپا کر اسٹیرائیڈ (جیسے کلوبیٹاسول) ملایا جاتا ہے۔ زیادہ دن لگانے سے جلد پتلی ہو سکتی ہے اور دانے، نشان اور داغ پڑ سکتے ہیں۔ لیبل کو اسٹیرائیڈ چیکر میں چیک کریں، اور جلد کا مسئلہ ہو تو ڈرمیٹولوجسٹ سے ملیں۔"},
+ {k:["safe","mehfooz","محفوظ","check","چیک","kaise","how"],
+  en:"To check a product, open the Steroid Checker, paste the ingredient list from the label, and press Check. If nothing is found, that still does not guarantee safety.",
+  ur:"پروڈکٹ چیک کرنے کے لیے اسٹیرائیڈ چیکر کھولیں، لیبل سے اجزاء کی فہرست پیسٹ کریں اور چیک دبائیں۔ اگر کچھ نہ ملے تو بھی اس کا مطلب پکی حفاظت نہیں ہے۔"},
+ {k:["review","fake","نقلی","ریویو"],
+  en:"Fake reviews are often very short, copied, or all 5 stars. Do not trust a product only because of its reviews.",
+  ur:"نقلی ریویو اکثر بہت چھوٹے، کاپی کیے ہوئے یا سب پانچ ستاروں والے ہوتے ہیں۔ صرف ریویو دیکھ کر کسی پروڈکٹ پر بھروسہ نہ کریں۔"},
+ {k:["privacy","data","پرائیویسی","ڈیٹا"],
+  en:"Your data stays on your own device. GlowGuard does not send your scans to anyone.",
+  ur:"آپ کا ڈیٹا آپ کے اپنے ڈیوائس پر رہتا ہے۔ گلو گارڈ آپ کے اسکین کسی کو نہیں بھیجتا۔"},
+ {k:["skin","acne","jild","جلد","دانے"],
+  en:"I give general information only, not a medical diagnosis. For skin problems please see a dermatologist.",
+  ur:"میں صرف عام معلومات دیتا ہوں، طبی تشخیص نہیں۔ جلد کے مسئلے کے لیے براہِ کرم ڈرمیٹولوجسٹ سے ملیں۔"}
+];
+function answer(text){
+ const t=text.toLowerCase()+" ";
+ const ur=/[\u0600-\u06FF]/.test(text)||/\b(kya|kaise|kia|hai|nahi|mujhe|salam|gora|jild|mehfooz)\b/.test(t);
+ const L=ur?"ur":"en";
+ for(const r of RESTRICTED){ if(r.n.some(x=>t.includes(x))){
+  return L==="ur"?`${r.n[0]}: ${r.u}`:`${r.n[0]}: ${r.why}`; } }
+ for(const i of INTENTS){ if(i.k.some(x=>t.includes(x))) return i[L]; }
+ return L==="ur"?"معذرت، میں یہ نہیں سمجھا۔ آپ اسٹیرائیڈ، کسی جز کا نام (جیسے ہائیڈروکوینون) یا پروڈکٹ چیک کرنے کے بارے میں پوچھ سکتے ہیں۔"
+  :"Sorry, I did not understand. Try asking about steroids, an ingredient name (like hydroquinone), or how to check a product.";
+}
+function chat(){
+ panel.innerHTML=`<h2>M5 · Chatbot / چیٹ بوٹ</h2><p>Ask in English or Urdu. اردو یا انگلش میں پوچھیں۔</p>
+ <div id="log"></div><div class="row"><input id="q" dir="auto" placeholder="Type here / یہاں لکھیں"><button class="go" id="send">Send</button></div>`;
+ const log=document.getElementById("log"),q=document.getElementById("q");
+ const add=(txt,cls)=>{const d=document.createElement("div");d.className="b "+cls;d.dir="auto";d.textContent=txt;d.style.whiteSpace="pre-line";log.appendChild(d);log.scrollTop=log.scrollHeight;};
+ const send=()=>{const v=q.value.trim();if(!v)return;add(v,"me");add(answer(v),"bot");q.value="";};
+ add(INTENTS[0].en+"\n"+INTENTS[0].ur,"bot");
+ document.getElementById("send").onclick=send;
+ q.onkeydown=e=>{if(e.key==="Enter")send();};
+ panel.scrollIntoView({behavior:"smooth"});
+}
+</script>
+</body>
+</html>
